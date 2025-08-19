@@ -1,0 +1,11 @@
+participant_id,visit_date,age,gender,blood_pressure,diagnosis
+P001,2025-01-02,34,M,120/80,Healthy
+P002,not_a_date,45,F,135/85,Hypertension
+P003,2025-01-04,29,F,abc,Healthy
+P004,2025-01-05,51,X,142/90,Diabetes
+P005,2025-01-08,62,M,150/95,Hypertension
+P006,2025-01-09,NaN,F,125/82,Healthy
+P007,2025-01-11,41,M,138/88,Hypertension
+P008,wrong_date,33,F,130/85,Healthy
+P009,2025-01-14,27,F,127/83,Asthma
+P010,2025-01-15,invalid_age,M,140/89,Diabetes

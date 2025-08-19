@@ -1,0 +1,177 @@
+{
+  "data_flow": {
+    "description": "CSV Quality Checker Data Flow",
+    "phases": [
+      {
+        "phase": "input",
+        "description": "User input and configuration",
+        "steps": [
+          {
+            "step": "file_upload",
+            "component": "streamlit_uploader",
+            "input": "CSV file",
+            "output": "uploaded_file_object"
+          },
+          {
+            "step": "schema_config",
+            "component": "json_parser",
+            "input": "user_schema_json",
+            "output": "parsed_schema_dict"
+          },
+          {
+            "step": "rules_config",
+            "component": "json_parser",
+            "input": "user_rules_json",
+            "output": "parsed_rules_dict"
+          },
+          {
+            "step": "params_config",
+            "component": "streamlit_inputs",
+            "input": "min_rows_setting",
+            "output": "configuration_parameters"
+          }
+        ]
+      },
+      {
+        "phase": "processing",
+        "description": "File loading and quality checks",
+        "steps": [
+          {
+            "step": "temp_file_creation",
+            "component": "tempfile_handler",
+            "input": "uploaded_file_object",
+            "output": "temporary_file_path"
+          },
+          {
+            "step": "csv_loading",
+            "component": "data_loader.load_csv",
+            "input": "temporary_file_path",
+            "output": "pandas_dataframe",
+            "error_handling": "CSVLoadError"
+          },
+          {
+            "step": "row_count_check",
+            "component": "checks.check_row_count",
+            "input": ["pandas_dataframe", "min_rows"],
+            "output": "row_count_results"
+          },
+          {
+            "step": "data_type_check",
+            "component": "checks.check_data_types",
+            "input": ["pandas_dataframe", "schema_dict"],
+            "output": "type_check_results",
+            "conditional": "if schema provided"
+          },
+          {
+            "step": "value_range_check",
+            "component": "checks.check_value_ranges",
+            "input": ["pandas_dataframe", "rules_dict"],
+            "output": "range_check_results",
+            "conditional": "if rules provided"
+          }
+        ]
+      },
+      {
+        "phase": "aggregation",
+        "description": "Results compilation and summary",
+        "steps": [
+          {
+            "step": "results_aggregation",
+            "component": "quality_pipeline.run_quality_checks",
+            "input": ["row_count_results", "type_check_results", "range_check_results"],
+            "output": "aggregated_results"
+          },
+          {
+            "step": "summary_calculation",
+            "component": "summary_processor",
+            "input": "aggregated_results",
+            "output": "summary_statistics"
+          },
+          {
+            "step": "formatting",
+            "component": "format_results_summary",
+            "input": "aggregated_results",
+            "output": "formatted_summary"
+          },
+          {
+            "step": "issue_extraction",
+            "component": "get_detailed_issues",
+            "input": "aggregated_results",
+            "output": "detailed_issues"
+          }
+        ]
+      },
+      {
+        "phase": "display",
+        "description": "UI rendering and user interaction",
+        "steps": [
+          {
+            "step": "summary_dashboard",
+            "component": "streamlit_metrics",
+            "input": "summary_statistics",
+            "output": "dashboard_display"
+          },
+          {
+            "step": "detailed_results",
+            "component": "streamlit_expanders",
+            "input": "detailed_issues",
+            "output": "detailed_display"
+          },
+          {
+            "step": "download_options",
+            "component": "streamlit_downloads",
+            "input": ["formatted_summary", "aggregated_results"],
+            "output": "download_buttons"
+          }
+        ]
+      }
+    ],
+    "data_structures": {
+      "check_result": {
+        "check_type": "string",
+        "passed": "boolean",
+        "message": "string",
+        "specific_data": "object"
+      },
+      "aggregated_results": {
+        "file_path": "string",
+        "load_success": "boolean",
+        "data_info": {
+          "row_count": "integer",
+          "column_count": "integer",
+          "columns": "array",
+          "memory_usage_mb": "float"
+        },
+        "summary": {
+          "total_checks": "integer",
+          "passed_checks": "integer",
+          "failed_checks": "integer",
+          "overall_passed": "boolean",
+          "success_rate": "float"
+        },
+        "checks": "array",
+        "errors": "array"
+      }
+    },
+    "error_flows": [
+      {
+        "error_type": "file_load_error",
+        "trigger": "invalid_csv_file",
+        "handler": "CSVLoadError",
+        "display": "error_message_in_ui"
+      },
+      {
+        "error_type": "configuration_error",
+        "trigger": "invalid_json_config",
+        "handler": "json_decode_error",
+        "display": "error_message_in_sidebar"
+      },
+      {
+        "error_type": "check_execution_error",
+        "trigger": "exception_in_check_function",
+        "handler": "try_catch_wrapper",
+        "display": "error_in_results_list"
+      }
+    ]
+  }
+}
