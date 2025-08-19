@@ -373,17 +373,39 @@ def infer_column_types(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
             column_analysis[column] = analysis
             continue
         
-        # Count different pattern types
+        # Enhanced pattern detection
         patterns = {
             'integer': 0,
             'float': 0, 
             'date': 0,
-            'boolean': 0,
+            'structured_text': 0,  # NEW: for patterns like "120/80"
+            'short_categorical': 0,  # NEW: for short codes like M/F
             'text': 0
         }
         
         value_classifications = []
+        structured_pattern = None
         
+        # First pass: detect if there's a common structured pattern
+        structured_patterns = {}
+        for idx, value in non_null_values.items():
+            value_str = str(value).strip()
+            
+            # Check for structured patterns (like "number/number")
+            if re.match(r'^\d+/\d+$', value_str):
+                pattern_key = 'number/number'
+                structured_patterns[pattern_key] = structured_patterns.get(pattern_key, 0) + 1
+            elif re.match(r'^[A-Z][0-9]+$', value_str):  # Like P001
+                pattern_key = 'letter+digits'
+                structured_patterns[pattern_key] = structured_patterns.get(pattern_key, 0) + 1
+        
+        # Find most common structured pattern
+        if structured_patterns:
+            dominant_pattern = max(structured_patterns.items(), key=lambda x: x[1])
+            if dominant_pattern[1] >= len(non_null_values) * 0.7:  # 70% threshold
+                structured_pattern = dominant_pattern[0]
+        
+        # Second pass: classify each value
         for idx, value in non_null_values.items():
             value_str = str(value).strip()
             classification = 'text'  # default
@@ -397,9 +419,12 @@ def infer_column_types(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
             elif _is_valid_date(value_str):
                 classification = 'date'
                 patterns['date'] += 1
-            elif _is_valid_boolean(value_str):
-                classification = 'boolean'
-                patterns['boolean'] += 1
+            elif structured_pattern and _matches_structured_pattern(value_str, structured_pattern):
+                classification = 'structured_text'
+                patterns['structured_text'] += 1
+            elif len(value_str) <= 3 and value_str.isalpha():  # Short alphabetic codes
+                classification = 'short_categorical'
+                patterns['short_categorical'] += 1
             else:
                 classification = 'text'
                 patterns['text'] += 1
@@ -407,59 +432,74 @@ def infer_column_types(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
             value_classifications.append({
                 'index': idx,
                 'value': value,
-                'classification': classification
+                'classification': classification,
+                'structured_pattern': structured_pattern if classification == 'structured_text' else None
             })
         
         # Determine most likely type
         total_values = len(non_null_values)
         type_percentages = {k: (v / total_values) * 100 for k, v in patterns.items()}
         
-        # Find dominant type (>= 70% threshold)
+        # Find dominant type with improved logic
         dominant_type = max(type_percentages.items(), key=lambda x: x[1])
         
+        # Enhanced type inference with better thresholds
         if dominant_type[1] >= 70:  # If >= 70% of values match a pattern
-            analysis['inferred_type'] = dominant_type[0] if dominant_type[0] != 'integer' else 'int'
-            if dominant_type[0] == 'date':
-                analysis['inferred_type'] = 'datetime'
-            elif dominant_type[0] == 'boolean':
-                analysis['inferred_type'] = 'bool'
+            if dominant_type[0] == 'integer':
+                analysis['inferred_type'] = 'int'
             elif dominant_type[0] == 'float':
                 analysis['inferred_type'] = 'float'
+            elif dominant_type[0] == 'date':
+                analysis['inferred_type'] = 'datetime'
+            elif dominant_type[0] == 'structured_text':
+                analysis['inferred_type'] = 'structured_text'
+                analysis['structured_pattern'] = structured_pattern
+            elif dominant_type[0] == 'short_categorical':
+                analysis['inferred_type'] = 'categorical'
+            else:
+                analysis['inferred_type'] = 'str'
                 
             analysis['confidence'] = dominant_type[1] / 100
             
-            # Find outliers (values that don't match the inferred type)
+            # Find outliers based on inferred type
             expected_classification = dominant_type[0]
             for item in value_classifications:
                 if item['classification'] != expected_classification:
+                    # Special handling for structured text
+                    if expected_classification == 'structured_text':
+                        issue_msg = f"Expected {structured_pattern} pattern but found: '{item['value']}'"
+                    else:
+                        issue_msg = f"Expected {analysis['inferred_type']} but found {item['classification']}: '{item['value']}'"
+                    
                     analysis['outliers'].append({
                         'row_index': int(item['index']),
                         'value': item['value'],
                         'expected_type': analysis['inferred_type'],
                         'actual_classification': item['classification'],
-                        'issue': f"Expected {analysis['inferred_type']} but found {item['classification']}: '{item['value']}'"
+                        'issue': issue_msg
                     })
         else:
-            # Mixed types - probably text with some structure
+            # Mixed types - default to text but still report inconsistencies
             analysis['inferred_type'] = 'str'
-            analysis['confidence'] = type_percentages['text'] / 100
+            analysis['confidence'] = max(type_percentages.values()) / 100
             
-            # For mixed types, flag non-text values as potential issues
-            for item in value_classifications:
-                if item['classification'] != 'text':
-                    analysis['outliers'].append({
-                        'row_index': int(item['index']),
-                        'value': item['value'], 
-                        'expected_type': 'str',
-                        'actual_classification': item['classification'],
-                        'issue': f"Mixed data types in column - found {item['classification']}: '{item['value']}'"
-                    })
+            # For truly mixed data, only flag very obvious outliers
+            # (don't flag everything as an outlier)
         
         analysis['patterns'] = patterns
         analysis['type_percentages'] = type_percentages
         column_analysis[column] = analysis
     
     return column_analysis
+
+
+def _matches_structured_pattern(value_str: str, pattern: str) -> bool:
+    """Check if a value matches a specific structured pattern."""
+    if pattern == 'number/number':
+        return bool(re.match(r'^\d+/\d+$', value_str))
+    elif pattern == 'letter+digits':
+        return bool(re.match(r'^[A-Z][0-9]+$', value_str))
+    return False
 
 
 def check_automatic_quality(df: pd.DataFrame) -> Dict[str, Any]:
