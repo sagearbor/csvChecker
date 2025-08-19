@@ -61,17 +61,82 @@ def main():
                 help="Define validation rules for columns. Use 'min'/'max' for numeric ranges, 'allowed' for categorical values"
             )
     
-    # Main content area
-    uploaded_file = st.file_uploader(
-        "Choose a CSV file",
-        type="csv",
-        help="Upload a CSV file to analyze its data quality"
+    # Main content area - CSV Input Options
+    st.header("📄 CSV Input")
+    
+    # Input method selection
+    input_method = st.radio(
+        "Choose input method:",
+        ["Upload CSV File", "Paste CSV Data"],
+        help="Select how you want to provide your CSV data"
     )
     
-    if uploaded_file is not None:
-        # Save uploaded file temporarily
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as tmp_file:
-            tmp_file.write(uploaded_file.getvalue())
+    csv_data = None
+    filename = None
+    
+    if input_method == "Upload CSV File":
+        uploaded_file = st.file_uploader(
+            "Choose a CSV file",
+            type="csv",
+            help="Upload a CSV file to analyze its data quality"
+        )
+        
+        if uploaded_file is not None:
+            csv_data = uploaded_file.getvalue().decode('utf-8')
+            filename = uploaded_file.name
+    
+    else:  # Paste CSV Data
+        col1, col2 = st.columns([3, 1])
+        
+        # Initialize session state for example CSV
+        if 'example_csv' not in st.session_state:
+            st.session_state.example_csv = ""
+        
+        example_csv_content = """participant_id,visit_date,age,gender,blood_pressure,diagnosis
+P001,2025-01-02,34,M,120/80,Healthy
+P002,not_a_date,45,F,135/85,Hypertension
+P003,2025-01-04,29,F,abc,Healthy
+P004,2025-01-05,51,X,142/90,Diabetes
+P005,2025-01-08,62,M,150/95,Hypertension
+P006,2025-01-09,NaN,F,125/82,Healthy
+P007,2025-01-11,41,M,138/88,Hypertension
+P008,wrong_date,33,F,130/85,Healthy
+P009,2025-01-14,27,F,127/83,Asthma
+P010,2025-01-15,invalid_age,M,140/89,Diabetes"""
+        
+        with col1:
+            csv_text = st.text_area(
+                "Paste your CSV data here:",
+                value=st.session_state.example_csv,
+                height=200,
+                placeholder="participant_id,visit_date,age,gender,blood_pressure,diagnosis\nP001,2025-01-02,34,M,120/80,Healthy\nP002,not_a_date,45,F,135/85,Hypertension\n...",
+                help="Paste CSV data including headers"
+            )
+        
+        with col2:
+            st.write("**Example CSV:**")
+            if st.button("📋 Load Example", help="Load example CSV with data quality issues"):
+                st.session_state.example_csv = example_csv_content
+                st.rerun()
+            
+            # Show example in expandable section
+            with st.expander("👀 View Example CSV"):
+                st.code(example_csv_content, language="csv")
+                
+                st.info("**Issues in this example:**\n"
+                       "• Invalid dates: 'not_a_date', 'wrong_date'\n"
+                       "• Invalid ages: 'NaN', 'invalid_age'\n"
+                       "• Invalid blood pressure: 'abc'\n"
+                       "• Click 'Load Example' button above to test!")
+        
+        if csv_text.strip():
+            csv_data = csv_text
+            filename = "pasted_data.csv"
+    
+    if csv_data is not None:
+        # Save CSV data to temporary file (works for both upload and paste)
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".csv", encoding='utf-8') as tmp_file:
+            tmp_file.write(csv_data)
             tmp_file_path = tmp_file.name
         
         try:
@@ -102,25 +167,28 @@ def main():
                 )
             
             # Display results
-            display_results(results, uploaded_file.name)
+            display_results(results, filename)
             
         finally:
             # Clean up temporary file
             os.unlink(tmp_file_path)
     
     else:
-        # Show example/instructions when no file is uploaded
-        st.info("👆 Please upload a CSV file to begin quality analysis")
+        # Show example/instructions when no data is provided
+        st.info("👆 Please upload a CSV file or paste CSV data to begin quality analysis")
         
         with st.expander("📖 How to use this tool"):
             st.markdown("""
             ### Steps:
-            1. **Upload CSV**: Use the file uploader above to select your CSV file
-            2. **Configure checks**: Use the sidebar to set up validation rules:
-               - **Minimum rows**: Set the minimum number of rows required
-               - **Data type schema**: Define expected column types (int, float, str, bool, datetime)
+            1. **Provide CSV Data**: Either upload a file or paste CSV data
+               - **Upload**: Select a .csv file from your computer
+               - **Paste**: Copy and paste CSV data directly, or click 'Load Example'
+            2. **Automatic Analysis**: The tool automatically detects data types and finds outliers
+            3. **Optional Configuration**: Use the sidebar for additional validation rules:
+               - **Minimum rows**: Set the minimum number of rows required  
+               - **Manual schema**: Override automatic detection (advanced users)
                - **Value rules**: Set numeric ranges or allowed categorical values
-            3. **Review results**: The tool will display a summary and detailed analysis
+            4. **Review results**: The tool automatically detects outliers and displays detailed analysis
             
             ### Example Schema:
             ```json
