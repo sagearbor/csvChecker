@@ -1,0 +1,139 @@
+project: data_quality_checker
+description: >
+  A Python project that performs data quality checks (row count, data type validation,
+  and value range checks) on CSV files. Includes a Streamlit frontend to upload files,
+  display summary results, and detailed issue listings.
+
+checklist:
+  - id: 1
+    label: "Set up project structure"
+    status: Done
+    description: >
+      Create a Python project scaffold with `src/`, `tests/`, and requirements.txt.
+    dependencies: []
+    subtasks:
+      - init src/ directory with __init__.py
+      - init tests/ with __init__.py
+      - create requirements.txt containing pandas, pytest, streamlit
+
+  - id: 2
+    label: "Implement CSV loader utility"
+    status: ToDo
+    description: >
+      Implement a function to safely load CSV files with pandas, catching
+      parsing errors and returning a DataFrame.
+    dependencies: [1]
+    subtasks:
+      - src/data_loader.py
+      - Function: load_csv(filepath: str) -> pd.DataFrame
+      - Raise custom exceptions on failure
+
+  - id: 3
+    label: "Unit test CSV loader"
+    status: ToDo
+    description: >
+      Write pytest tests for CSV loader with valid and invalid mock CSVs.
+    dependencies: [2]
+    subtasks:
+      - tests/test_data_loader.py
+      - Mock CSV file valid.csv
+      - Mock CSV file malformed.csv
+
+  - id: 4
+    label: "Implement row count check"
+    status: ToDo
+    description: >
+      Create a function to check number of rows vs. threshold (optional).
+      Return result as structured dict.
+    dependencies: [2]
+    subtasks:
+      - src/checks.py -> function check_row_count(df: pd.DataFrame, min_rows: int=1)
+
+  - id: 5
+    label: "Implement data type check"
+    status: ToDo
+    description: >
+      Provide function to validate expected column types. Returns dict of columns
+      mismatch info.
+    dependencies: [2]
+    subtasks:
+      - src/checks.py -> function check_data_types(df: pd.DataFrame, schema: dict)
+
+  - id: 6
+    label: "Implement value set/range check"
+    status: ToDo
+    description: >
+      Checks value ranges (numeric min/max) and value sets (categorical allowed values).
+      Returns dict of violations.
+    dependencies: [2]
+    subtasks:
+      - src/checks.py -> function check_value_ranges(df: pd.DataFrame, rules: dict)
+
+  - id: 7
+    label: "Unit test data checks"
+    status: ToDo
+    description: >
+      Pytest modules validating check_row_count, check_data_types, check_value_ranges.
+      Include mock DataFrames inline and via small csv fixtures.
+    dependencies: [4,5,6]
+    subtasks:
+      - tests/test_checks.py
+
+  - id: 8
+    label: "Integrate quality checker pipeline"
+    status: ToDo
+    description: >
+      Create a main orchestrator that loads CSV and executes all checks,
+      aggregates results into JSON-like structure.
+    dependencies: [2,4,5,6]
+    subtasks:
+      - src/quality_pipeline.py
+      - function run_quality_checks(file: str, schema: dict, rules: dict) -> dict
+
+  - id: 9
+    label: "Unit test pipeline"
+    status: ToDo
+    description: >
+      Pytest for integrated run_quality_checks, simulating schema and rules.
+    dependencies: [8]
+    subtasks:
+      - tests/test_quality_pipeline.py
+
+  - id: 10
+    label: "Streamlit frontend - upload and run analysis"
+    status: ToDo
+    description: >
+      Simple Streamlit app to upload a CSV and run run_quality_checks().
+    dependencies: [8]
+    subtasks:
+      - app.py
+      - File uploader widget
+      - Call run_quality_checks()
+
+  - id: 11
+    label: "Streamlit frontend - summary dashboard"
+    status: ToDo
+    description: >
+      Display summary metrics: row count, number of issues.
+    dependencies: [10]
+    subtasks:
+      - app.py -> summary section with st.metric, st.json
+
+  - id: 12
+    label: "Streamlit frontend - detailed issues section"
+    status: ToDo
+    description: >
+      Show table of problematic rows/columns. Allow download of clean vs issues-only data.
+    dependencies: [10]
+    subtasks:
+      - app.py -> detailed results section via st.dataframe
+
+  - id: 13
+    label: "Frontend testability"
+    status: ToDo
+    description: >
+      Write lightweight unit tests for app logic, mocking Streamlit with monkeypatch,
+      test run_quality_checks call.
+    dependencies: [12]
+    subtasks:
+      - tests/test_app.py
