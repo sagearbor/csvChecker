@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from .data_loader import load_csv, CSVLoadError
-from .checks import check_row_count, check_data_types, check_value_ranges, check_data_consistency
+from .checks import check_row_count, check_data_types, check_value_ranges, check_data_consistency, check_automatic_quality
 
 
 def run_quality_checks(
@@ -83,6 +83,13 @@ def run_quality_checks(
         results['checks'].append(consistency_check)
     except Exception as e:
         results['errors'].append(f"Data consistency check failed: {str(e)}")
+    
+    # Run automatic quality check (always run this - main outlier detection)
+    try:
+        automatic_check = check_automatic_quality(df)
+        results['checks'].append(automatic_check)
+    except Exception as e:
+        results['errors'].append(f"Automatic quality check failed: {str(e)}")
     
     # Calculate summary statistics
     total_checks = len(results['checks'])

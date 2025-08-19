@@ -20,7 +20,7 @@ def main():
     )
     
     st.title("🔍 CSV Data Quality Checker")
-    st.markdown("Upload a CSV file to perform comprehensive data quality checks including row count, data type validation, and value range analysis.")
+    st.markdown("**Automatic outlier detection powered by intelligent data type inference.** Upload a CSV file and the tool will automatically analyze each column, infer the expected data types, and identify problematic values like invalid dates, non-numeric data in numeric columns, and inconsistent formats.")
     
     # Sidebar for configuration
     with st.sidebar:
@@ -34,14 +34,17 @@ def main():
             help="Minimum number of rows required in the CSV file"
         )
         
-        # Schema configuration
-        st.subheader("Data Type Schema (Optional)")
-        schema_enabled = st.checkbox("Enable data type validation")
+        # Schema configuration (now optional - automatic detection is primary)
+        st.subheader("🔍 Automatic Quality Detection")
+        st.info("The tool automatically infers data types and detects outliers. Manual schema is optional for additional validation.")
+        
+        schema_enabled = st.checkbox("Enable manual data type validation (advanced)")
         schema_json = ""
         if schema_enabled:
+            st.warning("⚠️ Manual schema will override automatic detection. Only use if you need specific type constraints.")
             schema_json = st.text_area(
-                "Schema (JSON format)",
-                value='{\n  "column1": "int",\n  "column2": "str",\n  "column3": "float"\n}',
+                "Manual Schema (JSON format)",
+                value='{\n  "participant_id": "str",\n  "visit_date": "datetime",\n  "age": "int",\n  "gender": "str",\n  "blood_pressure": "str",\n  "diagnosis": "str"\n}',
                 height=150,
                 help="Define expected data types for columns. Supported types: int, float, str, bool, datetime"
             )
@@ -53,7 +56,7 @@ def main():
         if rules_enabled:
             rules_json = st.text_area(
                 "Rules (JSON format)",
-                value='{\n  "age": {"min": 0, "max": 120},\n  "country": {"allowed": ["USA", "CAN", "MEX"]}\n}',
+                value='{\n  "age": {"min": 0, "max": 120},\n  "gender": {"allowed": ["M", "F", "Other"]},\n  "diagnosis": {"allowed": ["Healthy", "Hypertension", "Diabetes", "Asthma"]}\n}',
                 height=150,
                 help="Define validation rules for columns. Use 'min'/'max' for numeric ranges, 'allowed' for categorical values"
             )
@@ -289,6 +292,39 @@ def display_detailed_results(results: dict):
                                 st.write(f"  • All values are identical: {issue['message']}")
                             else:
                                 st.write(f"  • {issue}")
+            
+            elif check.get('check_type') == 'automatic_quality':
+                column_analysis = check.get('column_analysis', {})
+                
+                if check.get('total_outliers', 0) > 0:
+                    st.subheader(f"🎯 Automatic Outlier Detection ({check.get('total_outliers', 0)} outliers found)")
+                    
+                    for column, analysis in column_analysis.items():
+                        outliers = analysis.get('outliers', [])
+                        if outliers:
+                            inferred_type = analysis.get('inferred_type', 'unknown')
+                            confidence = analysis.get('confidence', 0) * 100
+                            
+                            st.write(f"**{column}** (inferred type: {inferred_type}, confidence: {confidence:.1f}%)")
+                            
+                            # Show outliers in a table
+                            outlier_df = pd.DataFrame(outliers)
+                            if not outlier_df.empty:
+                                st.dataframe(outlier_df[['row_index', 'value', 'issue']], use_container_width=True)
+                else:
+                    st.subheader("🎯 Automatic Outlier Detection")
+                    st.success("No outliers detected! All data appears consistent with inferred types.")
+                    
+                    # Show inferred types for each column
+                    st.write("**Inferred Column Types:**")
+                    for column, analysis in column_analysis.items():
+                        inferred_type = analysis.get('inferred_type', 'unknown')
+                        confidence = analysis.get('confidence', 0) * 100
+                        patterns = analysis.get('type_percentages', {})
+                        
+                        # Create a simple breakdown
+                        pattern_str = ", ".join([f"{k}: {v:.0f}%" for k, v in patterns.items() if v > 0])
+                        st.write(f"  • **{column}**: {inferred_type} ({confidence:.1f}% confidence) - {pattern_str}")
     
     # Raw results (for debugging)
     with st.expander("🔧 Raw Results (JSON)", expanded=False):

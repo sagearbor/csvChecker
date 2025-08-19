@@ -344,3 +344,153 @@ def check_data_consistency(df: pd.DataFrame) -> Dict[str, Any]:
         'total_issues': total_issues,
         'message': f"Data consistency check {'passed' if passed else 'failed'}: {total_issues} issues found across {len(issues)} columns"
     }
+
+
+def infer_column_types(df: pd.DataFrame) -> Dict[str, Dict[str, Any]]:
+    """
+    Automatically infer the expected data type for each column based on the data patterns.
+    
+    Args:
+        df: DataFrame to analyze
+        
+    Returns:
+        Dict mapping column names to inferred type info and outliers
+    """
+    column_analysis = {}
+    
+    for column in df.columns:
+        analysis = {
+            'inferred_type': 'str',  # default
+            'confidence': 0.0,
+            'outliers': [],
+            'patterns': {},
+            'sample_values': df[column].dropna().head(5).tolist()
+        }
+        
+        # Get non-null values
+        non_null_values = df[column].dropna()
+        if len(non_null_values) == 0:
+            column_analysis[column] = analysis
+            continue
+        
+        # Count different pattern types
+        patterns = {
+            'integer': 0,
+            'float': 0, 
+            'date': 0,
+            'boolean': 0,
+            'text': 0
+        }
+        
+        value_classifications = []
+        
+        for idx, value in non_null_values.items():
+            value_str = str(value).strip()
+            classification = 'text'  # default
+            
+            if _is_valid_integer(value_str):
+                classification = 'integer'
+                patterns['integer'] += 1
+            elif _is_valid_float(value_str):
+                classification = 'float'
+                patterns['float'] += 1
+            elif _is_valid_date(value_str):
+                classification = 'date'
+                patterns['date'] += 1
+            elif _is_valid_boolean(value_str):
+                classification = 'boolean'
+                patterns['boolean'] += 1
+            else:
+                classification = 'text'
+                patterns['text'] += 1
+            
+            value_classifications.append({
+                'index': idx,
+                'value': value,
+                'classification': classification
+            })
+        
+        # Determine most likely type
+        total_values = len(non_null_values)
+        type_percentages = {k: (v / total_values) * 100 for k, v in patterns.items()}
+        
+        # Find dominant type (>= 70% threshold)
+        dominant_type = max(type_percentages.items(), key=lambda x: x[1])
+        
+        if dominant_type[1] >= 70:  # If >= 70% of values match a pattern
+            analysis['inferred_type'] = dominant_type[0] if dominant_type[0] != 'integer' else 'int'
+            if dominant_type[0] == 'date':
+                analysis['inferred_type'] = 'datetime'
+            elif dominant_type[0] == 'boolean':
+                analysis['inferred_type'] = 'bool'
+            elif dominant_type[0] == 'float':
+                analysis['inferred_type'] = 'float'
+                
+            analysis['confidence'] = dominant_type[1] / 100
+            
+            # Find outliers (values that don't match the inferred type)
+            expected_classification = dominant_type[0]
+            for item in value_classifications:
+                if item['classification'] != expected_classification:
+                    analysis['outliers'].append({
+                        'row_index': int(item['index']),
+                        'value': item['value'],
+                        'expected_type': analysis['inferred_type'],
+                        'actual_classification': item['classification'],
+                        'issue': f"Expected {analysis['inferred_type']} but found {item['classification']}: '{item['value']}'"
+                    })
+        else:
+            # Mixed types - probably text with some structure
+            analysis['inferred_type'] = 'str'
+            analysis['confidence'] = type_percentages['text'] / 100
+            
+            # For mixed types, flag non-text values as potential issues
+            for item in value_classifications:
+                if item['classification'] != 'text':
+                    analysis['outliers'].append({
+                        'row_index': int(item['index']),
+                        'value': item['value'], 
+                        'expected_type': 'str',
+                        'actual_classification': item['classification'],
+                        'issue': f"Mixed data types in column - found {item['classification']}: '{item['value']}'"
+                    })
+        
+        analysis['patterns'] = patterns
+        analysis['type_percentages'] = type_percentages
+        column_analysis[column] = analysis
+    
+    return column_analysis
+
+
+def check_automatic_quality(df: pd.DataFrame) -> Dict[str, Any]:
+    """
+    Perform automatic data quality checking by inferring expected types 
+    and finding outliers/anomalies.
+    
+    Args:
+        df: DataFrame to check
+        
+    Returns:
+        Dict containing automatic quality check results
+    """
+    column_analysis = infer_column_types(df)
+    
+    total_outliers = 0
+    columns_with_issues = 0
+    
+    for column, analysis in column_analysis.items():
+        outlier_count = len(analysis['outliers'])
+        total_outliers += outlier_count
+        if outlier_count > 0:
+            columns_with_issues += 1
+    
+    passed = total_outliers == 0
+    
+    return {
+        'check_type': 'automatic_quality',
+        'passed': passed,
+        'column_analysis': column_analysis,
+        'total_outliers': total_outliers,
+        'columns_with_issues': columns_with_issues,
+        'message': f"Automatic quality check {'passed' if passed else 'failed'}: {total_outliers} outliers found across {columns_with_issues} columns"
+    }
